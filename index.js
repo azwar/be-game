@@ -6,18 +6,19 @@ app.use(cors());
 const http = require('http');
 const server = http.createServer(app);
 const { Server } = require("socket.io");
+const { shuffle } = require('./src/utils');
 
 const io = require("socket.io")(server, {
   cors: {
     origin: "http://localhost:3001",
     methods: ["GET", "POST"],
     allowedHeaders: ["Access-Control-Allow-Origin"],
-
   }
 });
 
 const users = []
-
+const selectedQuestions = []
+let currentUser = 0
 
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/index.html');
@@ -44,13 +45,34 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('room-checked', users.length);
   })
 
-  socket.on('join', ({ name }) => {
-    if (users.length === 3) {
-      socket.emit('room-full',)
+  socket.on('select-question', data => {
+    const { question } = data;
+    selectedQuestions.push(question);
+    socket.emit('question-selected', data);
+    socket.broadcast.emit('question-selected', data);
+  })
+
+  socket.on('next-turn', data => {
+    if (currentUser === 2) { // index 2
+      currentUser = 0
+    } else {
+      currentUser = currentUser + 1
     }
 
-    console.log('user joined', users, socket.id)
-    users.push({ name: name, id: socket.id})
+    play(users)
+  })
+
+  socket.on('join', ({ name }) => {
+    if (users.length === 3) {
+      socket.emit('room-full')
+      return
+    }
+    const socketId = socket.id
+
+    socket.join('room');
+    socket.join(socketId)
+    console.log('user joined', users, socketId)
+    users.push({ name: name, id: socketId})
 
     if (users.length === 3) {
       socket.broadcast.emit('start-play', 'go');
@@ -63,16 +85,38 @@ io.on('connection', (socket) => {
   });
 
   const questions = [
-    "What is your favorite song and why",
-    "What is yout favotire food, how it taste",
-    "What is your favorite movie",
+    "What is your favorite song and why?",
+    "What is yout favotire food, how it taste?",
+    "What is your favorite movie?",
+    "Tell us about your hobby(ies)?",
+    "Do you have hard to forget memory as a child?",
+    "Where you will go for vacation for next time?",
+    "Where is your favorite place to go?",
+    "What animal do you like, and why?",
+    "What weather do you like?",
+    "What is your favorite gadget?",
   ]
-  const play = (users) => {
-    socket.broadcast.to(users[1]).emit('turn', questions);
-    socket.broadcast.to(users[1]).emit('turn', []);
-    socket.broadcast.to(users[1]).emit('turn', []);
-  }
 
+  const play = (users) => {
+    const randomQuestions = shuffle(questions)
+    const selectedQuestion = randomQuestions.splice(0, 3)
+
+    try {
+      for (let index = 0; index < users.length; index++) {
+        const user = users[index];
+
+        console.log('Sending question to', user)        
+        
+        if (index === currentUser) {
+          io.to(user.id).emit('turn', selectedQuestion);
+        } else {
+          io.to(user.id).emit('turn', []);
+        }
+      }
+    } catch (error) {
+      console.log('error', error)
+    }
+  }
 });
 
 io.listen(3000, () => {
