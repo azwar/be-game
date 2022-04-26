@@ -52,6 +52,10 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('question-selected', data);
   })
 
+  socket.on('shuffle', data => {
+    play(users)
+  })
+  
   socket.on('next-turn', data => {
     if (currentUser === 2) { // index 2
       currentUser = 0
